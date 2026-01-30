@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>خريطة قصص المكان</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<style>
+body { margin:0; font-family: Arial; }
+#map { height: 100vh; }
+.form {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: white;
+  padding: 10px;
+  z-index: 1000;
+  width: 250px;
+}
+input, textarea, select, button {
+  width: 100%;
+  margin-bottom: 5px;
+}
+</style>
+</head>
+<body>
+
+<div class="form">
+  <h3>أضف قصتك</h3>
+  <input id="name" placeholder="الاسم (اختياري)">
+  <input id="title" placeholder="عنوان القصة">
+  <textarea id="story" placeholder="القصة"></textarea>
+  <select id="category">
+    <option>ذكرى</option>
+    <option>مشكلة</option>
+    <option>قيمة</option>
+    <option>اقتراح</option>
+  </select>
+  <button onclick="submitStory()">إرسال</button>
+  <p id="status"></p>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+var map = L.map('map').setView([31.95, 35.23], 13); // عدل الموقع
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+var selectedLatLng = null;
+map.on('click', function(e) {
+  selectedLatLng = e.latlng;
+  alert("تم اختيار الموقع");
+});
+
+function submitStory() {
+  if (!selectedLatLng) {
+    alert("اختاري موقع على الخريطة أولاً");
+    return;
+  }
+
+  fetch("https://script.google.com/macros/s/AKfycbyk8zbGnixeXAsexnu3z2BCMdRaUd1QJvN-uBWxEN2jtbbWP65xd6WZQITRCJP1bb_Zpg/exec", {
+    method: "POST",
+    body: JSON.stringify({
+      name: name.value,
+      title: title.value,
+      story: story.value,
+      category: category.value,
+      lat: selectedLatLng.lat,
+      lng: selectedLatLng.lng
+    })
+  })
+  .then(res => res.json())
+  .then(() => {
+    L.marker(selectedLatLng).addTo(map)
+      .bindPopup("<b>"+title.value+"</b><br>"+story.value);
+    status.innerText = "✔ تم الحفظ";
+  });
+}
+</script>
+
+</body>
+</html>
