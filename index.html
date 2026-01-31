@@ -1,94 +1,261 @@
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script>
-  // 1) أنشئ الخريطة (تفتح مباشرة على مخيم جنين)
-  var map = L.map('map').setView([32.4603, 35.2952], 16);
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>خريطة قصص المكان</title>
 
-  // 2) طبقة الخريطة
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19
-  }).addTo(map);
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; }
+    #map { height: 100vh; width: 100%; }
 
-  // 3) حدود مخيم جنين (اختياري)
-  var bounds = L.latLngBounds(
-    [32.455, 35.288], // جنوب غرب
-    [32.466, 35.302]  // شمال شرق
-  );
-
-  map.setMaxBounds(bounds);
-  map.on('drag', function() {
-    map.panInsideBounds(bounds, { animate: false });
-  });
-
-  // 4) اختيار نقطة على الخريطة
-  var selectedLatLng = null;
-  var tempMarker = null;
-
-  map.on('click', function(e) {
-    selectedLatLng = e.latlng;
-
-    // (اختياري) إظهار ماركر مؤقت على مكان الاختيار
-    if (tempMarker) map.removeLayer(tempMarker);
-    tempMarker = L.marker(selectedLatLng).addTo(map);
-  });
-
-  // 5) إرسال القصة + الصورة (إن وجدت)
-  async function submitStory() {
-    if (!selectedLatLng) {
-      alert("اختاري موقع على الخريطة أولاً");
-      return;
+    .form {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: #fff;
+      padding: 12px;
+      z-index: 1000;
+      width: 270px;
+      border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.15);
     }
 
-    let photoPayload = null;
-    const file = document.getElementById("photo")?.files?.[0];
+    .form h3 { margin: 0 0 10px; font-size: 18px; }
+    label { display:block; font-size: 13px; margin: 6px 0 4px; color:#333; }
 
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("الصورة كبيرة، اختاري صورة أصغر من 2MB");
-        return;
-      }
+    input, textarea, select, button {
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 9px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-sizing: border-box;
+      font-size: 14px;
+      background: #fff;
+    }
 
-      const dataUrl = await new Promise((resolve, reject) => {
+    textarea { min-height: 80px; resize: vertical; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 700;
+      padding: 10px;
+    }
+    button:disabled { opacity: .65; cursor: not-allowed; }
+
+    #status { margin: 6px 0 0; font-size: 13px; color:#111; }
+
+    /* صفحة الشكر */
+    .thanks {
+      height: 100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#fff;
+      text-align:center;
+      padding: 20px;
+    }
+    .thanks .big { font-size: 34px; font-weight: 800; margin: 0; }
+    .thanks .small { font-size: 14px; margin-top: 10px; color:#444; }
+  </style>
+</head>
+
+<body>
+
+  <div class="form" id="formBox">
+    <h3>أضف قصتك</h3>
+
+    <input id="name" placeholder="الاسم (اختياري)">
+
+    <input id="title" placeholder="عنوان القصة" required>
+
+    <textarea id="story" placeholder="اكتب القصة هنا..." required></textarea>
+
+    <select id="category">
+      <option value="ذكرى">ذكرى</option>
+      <option value="حياة">حياة</option>
+      <option value="حكاية">حكاية</option>
+      <option value="مشكلة">مشكلة</option>
+      <option value="اقتراح">اقتراح</option>
+    </select>
+
+    <label for="photo">شاركي صورة (اختياري)</label>
+    <input type="file" id="photo" accept="image/*">
+
+    <button id="sendBtn" type="button">إرسال</button>
+    <p id="status"></p>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // 🔴 غيّري الرابط هذا بالرابط الجديد من Deploy
+    const API_URL = "https://script.google.com/macros/s/AKfycbyk8zbGnixeXAsexnu3z2BCMdRaUd1QJvN-uBWxEN2jtbbWP65xd6WZQITRCJP1bb_Zpg/exec";
+
+    const elName = document.getElementById("name");
+    const elTitle = document.getElementById("title");
+    const elStory = document.getElementById("story");
+    const elCategory = document.getElementById("category");
+    const elPhoto = document.getElementById("photo");
+    const elStatus = document.getElementById("status");
+    const elSendBtn = document.getElementById("sendBtn");
+
+    // ✅ مخيم جنين
+    const JENIN_CAMP_CENTER = [32.4632, 35.3015];
+    const START_ZOOM = 15;
+
+    const map = L.map('map', { zoomControl: true }).setView(JENIN_CAMP_CENTER, START_ZOOM);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // حدود تقريبية للمخيم (اختياري)
+    const bounds = L.latLngBounds(
+      [32.455, 35.288],
+      [32.466, 35.302]
+    );
+    map.setMaxBounds(bounds);
+    map.on('drag', function() { map.panInsideBounds(bounds, { animate: false }); });
+
+    let selectedLatLng = null;
+    let tempMarker = null;
+
+    map.on('click', function(e) {
+      selectedLatLng = e.latlng;
+      if (tempMarker) map.removeLayer(tempMarker);
+
+      tempMarker = L.marker(selectedLatLng).addTo(map)
+        .bindPopup("✅ تم اختيار الموقع").openPopup();
+    });
+
+    function showThankYou() {
+      document.body.innerHTML = `
+        <div class="thanks">
+          <div>
+            <p class="big">شكراً لوقتك</p>
+            <p class="small">تم الحفظ ✅</p>
+          </div>
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    async function fileToDataUrl(file) {
+      return await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-
-      photoPayload = { fileName: file.name, dataUrl };
     }
 
-    fetch("https://script.google.com/macros/s/AKfycbyk8zbGnixeXAsexnu3z2BCMdRaUd1QJvN-uBWxEN2jtbbWP65xd6WZQITRCJP1bb_Zpg/exec", {
-      method: "POST",
-      body: JSON.stringify({
-        name: document.getElementById("name").value,
-        title: document.getElementById("title").value,
-        story: document.getElementById("story").value,
-        category: document.getElementById("category").value,
-        lat: selectedLatLng.lat,
-        lng: selectedLatLng.lng,
-        photo: photoPayload
-      })
-    })
-    .then(res => res.json())
-    .then(resp => {
-      const imgHtml = resp.photo_url
-        ? `<br><img src="${resp.photo_url}" style="max-width:220px;border-radius:10px;margin-top:6px;">`
-        : "";
+    async function submitStory() {
+      try {
+        if (!selectedLatLng) {
+          alert("اختاري موقع على الخريطة أولاً");
+          return;
+        }
 
-      L.marker(selectedLatLng).addTo(map)
-        .bindPopup(`<b>${document.getElementById("title").value}</b><br>${document.getElementById("story").value}${imgHtml}`)
-        .openPopup();
+        const title = (elTitle.value || "").trim();
+        const story = (elStory.value || "").trim();
 
-      document.getElementById("status").innerText = "✓ تم الحفظ";
+        if (!title || !story) {
+          alert("اكتبي عنوان + القصة قبل الإرسال");
+          return;
+        }
 
-      // تفريغ الفورم
-      document.getElementById("photo").value = "";
-    })
-    .catch(() => {
-      document.getElementById("status").innerText = "صار خطأ بالإرسال";
-    });
-  }
-</script>
+        elSendBtn.disabled = true;
+        elStatus.textContent = "جاري الحفظ...";
+
+        // صورة اختيارية
+        let photoPayload = null;
+        const file = elPhoto.files && elPhoto.files[0];
+
+        if (file) {
+          // ✅ حد 2MB (عشان Apps Script)
+          if (file.size > 2 * 1024 * 1024) {
+            alert("الصورة كبيرة. اختاري صورة أصغر من 2MB.");
+            elSendBtn.disabled = false;
+            elStatus.textContent = "";
+            return;
+          }
+          const dataUrl = await fileToDataUrl(file);
+          photoPayload = { fileName: file.name, dataUrl };
+        }
+
+        const payload = {
+          name: (elName.value || "").trim(),
+          title,
+          story,
+          category: elCategory.value,
+          lat: selectedLatLng.lat,
+          lng: selectedLatLng.lng,
+          photo: photoPayload
+        };
+
+        // مهم: text/plain لتخفيف مشاكل CORS
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+
+        const resp = await res.json();
+
+        // ✅ لو في خطأ من السيرفر
+        if (!resp.ok) {
+          console.log(resp);
+          elStatus.textContent = "فشل الحفظ: " + (resp.error || "غير معروف");
+          elSendBtn.disabled = false;
+          return;
+        }
+
+        // ✅ لو الصورة كبيرة/ما انحفظت: نعرض سببها
+        if (resp.photo_status && resp.photo_status !== "photo_saved" && resp.photo_status !== "no_photo") {
+          console.log("Photo status:", resp.photo_status, "size:", resp.photo_size);
+          // لا نوقف الإرسال، بس نعرف السبب
+        }
+
+        // Popup مع صورة إذا انحفظت
+        const imgHtml = resp.photo_url
+          ? `<br><img src="${resp.photo_url}" style="max-width:220px;border-radius:10px;margin-top:8px;">`
+          : "";
+
+        L.marker(selectedLatLng).addTo(map)
+          .bindPopup(`<b>${escapeHtml(title)}</b><br>${escapeHtml(story)}${imgHtml}`);
+
+        // ✅ صفحة الشكر
+        showThankYou();
+
+      } catch (err) {
+        console.error(err);
+        elStatus.textContent = "صار خطأ بالإرسال";
+        elSendBtn.disabled = false;
+      }
+    }
+
+    elSendBtn.addEventListener("click", submitStory);
+  </script>
+
+</body>
+</html>
+
 
 
 
