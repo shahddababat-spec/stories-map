@@ -11,54 +11,27 @@
     #map { height: 100vh; width: 100%; }
 
     .form {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: #fff;
-      padding: 12px;
-      z-index: 1000;
-      width: 270px;
-      border-radius: 10px;
+      position: absolute; top: 12px; right: 12px;
+      background: #fff; padding: 12px; z-index: 1000;
+      width: 270px; border-radius: 10px;
       box-shadow: 0 6px 20px rgba(0,0,0,.15);
     }
-
     .form h3 { margin: 0 0 10px; font-size: 18px; }
     label { display:block; font-size: 13px; margin: 6px 0 4px; color:#333; }
 
     input, textarea, select, button {
-      width: 100%;
-      margin-bottom: 8px;
-      padding: 9px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      box-sizing: border-box;
-      font-size: 14px;
-      background: #fff;
+      width: 100%; margin-bottom: 8px; padding: 9px;
+      border: 1px solid #ddd; border-radius: 8px;
+      box-sizing: border-box; font-size: 14px; background: #fff;
     }
-
     textarea { min-height: 80px; resize: vertical; }
-
-    button {
-      cursor: pointer;
-      border: none;
-      background: #2563eb;
-      color: #fff;
-      font-weight: 700;
-      padding: 10px;
-    }
-    button:disabled { opacity: .65; cursor: not-allowed; }
-
+    button { cursor:pointer; border:none; background:#2563eb; color:#fff; font-weight:700; padding:10px; }
+    button:disabled { opacity:.65; cursor:not-allowed; }
     #status { margin: 6px 0 0; font-size: 13px; color:#111; }
 
-    /* شاشة الشكر */
     .thanks {
-      height: 100vh;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:#fff;
-      text-align:center;
-      padding: 20px;
+      height: 100vh; display:flex; align-items:center; justify-content:center;
+      background:#fff; text-align:center; padding: 20px;
     }
     .thanks .big { font-size: 34px; font-weight: 800; margin: 0; }
     .thanks .small { font-size: 14px; margin-top: 10px; color:#444; }
@@ -66,14 +39,11 @@
 </head>
 
 <body>
-
   <div class="form" id="formBox">
     <h3>أضف قصتك</h3>
 
     <input id="name" placeholder="الاسم (اختياري)">
-
     <input id="title" placeholder="عنوان القصة" required>
-
     <textarea id="story" placeholder="اكتب القصة هنا..." required></textarea>
 
     <select id="category">
@@ -95,8 +65,8 @@
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // 🔴 حطي هون رابط الـ Web App تبعك (نفس اللي عندك)
-    const API_URL = "https://script.google.com/macros/s/AKfycby4vXCs7Eqf2rnsEa-coElwYNfj2ZH51wBbGKtRIrcGf2PT125Ox-0bLy2C_X9Tz1qV3A/exec";
+    // ✅ حطي رابط الـWeb App النهائي (بعد Deploy الجديد)
+    const API_URL = "https://script.google.com/macros/s/AKfycbwUqPlttWOj4aseFIUnW9k4-6Nn6LSc0pFNuARh2gxGthIp1UkakVG7iYjOccv57celvA/exec";
 
     const elName = document.getElementById("name");
     const elTitle = document.getElementById("title");
@@ -106,23 +76,19 @@
     const elStatus = document.getElementById("status");
     const elSendBtn = document.getElementById("sendBtn");
 
-    // مركز جنين (عدّلي لو بدك)
-    const CENTER = [32.4632, 35.3015];
+    const JENIN_CAMP_CENTER = [32.4632, 35.3015];
     const START_ZOOM = 15;
 
-    const map = L.map('map').setView(CENTER, START_ZOOM);
+    const map = L.map('map', { zoomControl: true }).setView(JENIN_CAMP_CENTER, START_ZOOM);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
+      maxZoom: 19, attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // حدود (اختياري)
     const bounds = L.latLngBounds([32.455, 35.288], [32.466, 35.302]);
     map.setMaxBounds(bounds);
-    map.on('drag', () => map.panInsideBounds(bounds, { animate: false }));
+    map.on('drag', () => map.panInsideBounds(bounds, { animate:false }));
 
-    // اختيار نقطة
     let selectedLatLng = null;
     let tempMarker = null;
 
@@ -146,45 +112,62 @@
       `;
     }
 
-    async function fileToDataUrl(file) {
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    // ✅ تصغير + ضغط الصورة قبل الإرسال (بحل مشاكل الحجم)
+    async function compressImageToDataUrl(file, maxW = 1280, quality = 0.82) {
+      const img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = URL.createObjectURL(file);
       });
+
+      const scale = Math.min(1, maxW / img.width);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // JPEG أخف من PNG غالباً
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      return dataUrl;
     }
 
     async function submitStory() {
       try {
-        if (!selectedLatLng) {
-          alert("اختاري موقع على الخريطة أولاً");
-          return;
-        }
+        if (!selectedLatLng) { alert("اختاري موقع على الخريطة أولاً"); return; }
 
         const title = (elTitle.value || "").trim();
         const story = (elStory.value || "").trim();
-        if (!title || !story) {
-          alert("اكتبي عنوان + القصة قبل الإرسال");
-          return;
-        }
+        if (!title || !story) { alert("اكتبي عنوان + القصة قبل الإرسال"); return; }
 
         elSendBtn.disabled = true;
         elStatus.textContent = "جاري الحفظ...";
 
-        // صورة اختيارية
         let photoPayload = null;
         const file = elPhoto.files && elPhoto.files[0];
 
         if (file) {
-          // حد 2MB
-          if (file.size > 2 * 1024 * 1024) {
+          // بدال ما نرفض > منضغطها
+          const dataUrl = await compressImageToDataUrl(file, 1280, 0.82);
+          // حماية إضافية: لو بعد الضغط لسه كبيرة جداً
+          if (dataUrl.length > 2_700_000) {
             elSendBtn.disabled = false;
-            elStatus.textContent = "الصورة كبيرة (أكبر من 2MB).";
+            elStatus.textContent = "الصورة ما زالت كبيرة بعد الضغط. جرّبي صورة أصغر.";
             return;
           }
-          const dataUrl = await fileToDataUrl(file);
-          photoPayload = { fileName: file.name, dataUrl };
+          photoPayload = { fileName: file.name.replace(/\.[^/.]+$/, "") + ".jpg", dataUrl };
         }
 
         const payload = {
@@ -196,7 +179,6 @@
           photo: photoPayload
         };
 
-        // مهم: text/plain لتجنب preflight
         const res = await fetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -204,8 +186,9 @@
         });
 
         const text = await res.text();
-        let resp = null;
-        try { resp = JSON.parse(text); } catch (e) { resp = { ok:false, error:"Response not JSON", raw:text }; }
+        let resp;
+        try { resp = JSON.parse(text); }
+        catch { resp = { ok:false, error:"Response not JSON", raw:text }; }
 
         if (!resp.ok) {
           elSendBtn.disabled = false;
@@ -220,7 +203,6 @@
         L.marker(selectedLatLng).addTo(map)
           .bindPopup(`<b>${escapeHtml(title)}</b><br>${escapeHtml(story)}${imgHtml}`);
 
-        // صفحة شكر
         showThankYou();
 
       } catch (err) {
@@ -228,15 +210,6 @@
         elSendBtn.disabled = false;
         elStatus.textContent = "فشل الحفظ: " + (err?.message || "غير معروف");
       }
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
     }
   </script>
 </body>
