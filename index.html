@@ -216,14 +216,17 @@
           body: JSON.stringify(payload)
         });
 
-        const resp = await res.json();
+       const resp = await res.json();
 
-        // ✅ لو في خطأ من السيرفر
-        if (!resp.ok) {
-          console.log(resp);
-          elStatus.textContent = "فشل الحفظ: " + (resp.error || "غير معروف");
-          elSendBtn.disabled = false;
-          return;
+// ✅ اعتبريه نجاح لو (ok=true) أو (status="success")
+const isSuccess = (resp.ok === true) || (resp.status === "success");
+
+if (!isSuccess) {
+  console.log("Server response:", resp);
+  elStatus.textContent = "فشل الحفظ: " + (resp.error || JSON.stringify(resp));
+  elSendBtn.disabled = false;
+  return;
+
         }
 
         // ✅ لو الصورة كبيرة/ما انحفظت: نعرض سببها
@@ -233,9 +236,10 @@
         }
 
         // Popup مع صورة إذا انحفظت
-        const imgHtml = resp.photo_url
-          ? `<br><img src="${resp.photo_url}" style="max-width:220px;border-radius:10px;margin-top:8px;">`
-          : "";
+        const photoUrl = resp.photo_url || resp.photoUrl || resp.url || "";
+const imgHtml = photoUrl
+  ? `<br><img src="${photoUrl}" style="max-width:220px;border-radius:10px;margin-top:8px;">`
+  : "";
 
         L.marker(selectedLatLng).addTo(map)
           .bindPopup(`<b>${escapeHtml(title)}</b><br>${escapeHtml(story)}${imgHtml}`);
@@ -255,6 +259,7 @@
 
 </body>
 </html>
+
 
 
 
