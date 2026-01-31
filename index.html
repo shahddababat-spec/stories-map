@@ -50,7 +50,7 @@
 
     #status { margin: 6px 0 0; font-size: 13px; color:#111; }
 
-    /* صفحة الشكر */
+    /* شاشة الشكر */
     .thanks {
       height: 100vh;
       display:flex;
@@ -95,7 +95,7 @@
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // 🔴 غيّري الرابط هذا بالرابط الجديد من Deploy
+    // 🔴 حطي هون رابط الـ Web App تبعك (نفس اللي عندك)
     const API_URL = "https://script.google.com/macros/s/AKfycbyk8zbGnixeXAsexnu3z2BCMdRaUd1QJvN-uBWxEN2jtbbWP65xd6WZQITRCJP1bb_Zpg/exec";
 
     const elName = document.getElementById("name");
@@ -106,35 +106,34 @@
     const elStatus = document.getElementById("status");
     const elSendBtn = document.getElementById("sendBtn");
 
-    // ✅ مخيم جنين
-    const JENIN_CAMP_CENTER = [32.4632, 35.3015];
+    // مركز جنين (عدّلي لو بدك)
+    const CENTER = [32.4632, 35.3015];
     const START_ZOOM = 15;
 
-    const map = L.map('map', { zoomControl: true }).setView(JENIN_CAMP_CENTER, START_ZOOM);
+    const map = L.map('map').setView(CENTER, START_ZOOM);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap'
     }).addTo(map);
 
-    // حدود تقريبية للمخيم (اختياري)
-    const bounds = L.latLngBounds(
-      [32.455, 35.288],
-      [32.466, 35.302]
-    );
+    // حدود (اختياري)
+    const bounds = L.latLngBounds([32.455, 35.288], [32.466, 35.302]);
     map.setMaxBounds(bounds);
-    map.on('drag', function() { map.panInsideBounds(bounds, { animate: false }); });
+    map.on('drag', () => map.panInsideBounds(bounds, { animate: false }));
 
+    // اختيار نقطة
     let selectedLatLng = null;
     let tempMarker = null;
 
-    map.on('click', function(e) {
+    map.on('click', (e) => {
       selectedLatLng = e.latlng;
       if (tempMarker) map.removeLayer(tempMarker);
-
       tempMarker = L.marker(selectedLatLng).addTo(map)
         .bindPopup("✅ تم اختيار الموقع").openPopup();
     });
+
+    elSendBtn.addEventListener("click", submitStory);
 
     function showThankYou() {
       document.body.innerHTML = `
@@ -145,15 +144,6 @@
           </div>
         </div>
       `;
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
     }
 
     async function fileToDataUrl(file) {
@@ -174,7 +164,6 @@
 
         const title = (elTitle.value || "").trim();
         const story = (elStory.value || "").trim();
-
         if (!title || !story) {
           alert("اكتبي عنوان + القصة قبل الإرسال");
           return;
@@ -188,11 +177,10 @@
         const file = elPhoto.files && elPhoto.files[0];
 
         if (file) {
-          // ✅ حد 2MB (عشان Apps Script)
+          // حد 2MB
           if (file.size > 2 * 1024 * 1024) {
-            alert("الصورة كبيرة. اختاري صورة أصغر من 2MB.");
             elSendBtn.disabled = false;
-            elStatus.textContent = "";
+            elStatus.textContent = "الصورة كبيرة (أكبر من 2MB).";
             return;
           }
           const dataUrl = await fileToDataUrl(file);
@@ -201,62 +189,56 @@
 
         const payload = {
           name: (elName.value || "").trim(),
-          title,
-          story,
+          title, story,
           category: elCategory.value,
           lat: selectedLatLng.lat,
           lng: selectedLatLng.lng,
           photo: photoPayload
         };
 
-        // مهم: text/plain لتخفيف مشاكل CORS
+        // مهم: text/plain لتجنب preflight
         const res = await fetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify(payload)
         });
 
-       const resp = await res.json();
+        const text = await res.text();
+        let resp = null;
+        try { resp = JSON.parse(text); } catch (e) { resp = { ok:false, error:"Response not JSON", raw:text }; }
 
-// ✅ اعتبريه نجاح لو (ok=true) أو (status="success")
-const isSuccess = (resp.ok === true) || (resp.status === "success");
-
-if (!isSuccess) {
-  console.log("Server response:", resp);
-  elStatus.textContent = "فشل الحفظ: " + (resp.error || JSON.stringify(resp));
-  elSendBtn.disabled = false;
-  return;
-
+        if (!resp.ok) {
+          elSendBtn.disabled = false;
+          elStatus.textContent = "فشل الحفظ: " + (resp.error || resp.raw || "غير معروف");
+          return;
         }
 
-        // ✅ لو الصورة كبيرة/ما انحفظت: نعرض سببها
-        if (resp.photo_status && resp.photo_status !== "photo_saved" && resp.photo_status !== "no_photo") {
-          console.log("Photo status:", resp.photo_status, "size:", resp.photo_size);
-          // لا نوقف الإرسال، بس نعرف السبب
-        }
-
-        // Popup مع صورة إذا انحفظت
-        const photoUrl = resp.photo_url || resp.photoUrl || resp.url || "";
-const imgHtml = photoUrl
-  ? `<br><img src="${photoUrl}" style="max-width:220px;border-radius:10px;margin-top:8px;">`
-  : "";
+        const imgHtml = resp.photo_url
+          ? `<br><img src="${resp.photo_url}" style="max-width:220px;border-radius:10px;margin-top:8px;">`
+          : (photoPayload ? `<br><small>⚠️ الصورة ما انحفظت (${resp.photo_status || "unknown"})</small>` : "");
 
         L.marker(selectedLatLng).addTo(map)
           .bindPopup(`<b>${escapeHtml(title)}</b><br>${escapeHtml(story)}${imgHtml}`);
 
-        // ✅ صفحة الشكر
+        // صفحة شكر
         showThankYou();
 
       } catch (err) {
         console.error(err);
-        elStatus.textContent = "صار خطأ بالإرسال";
         elSendBtn.disabled = false;
+        elStatus.textContent = "فشل الحفظ: " + (err?.message || "غير معروف");
       }
     }
 
-    elSendBtn.addEventListener("click", submitStory);
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
   </script>
-
 </body>
 </html>
 
